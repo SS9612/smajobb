@@ -1,0 +1,62 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7000:80"
+      - "7001:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=db;Database=smajobb;Username=postgres;Password=${POSTGRES_PASSWORD}
+      - Redis__ConnectionString=redis:6379
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - smajobb-network
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=smajobb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - smajobb-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - smajobb-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:7000
+    depends_on:
+      - api
+    networks:
+      - smajobb-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  smajobb-network:
+    driver: bridge

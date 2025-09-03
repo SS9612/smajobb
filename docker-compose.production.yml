@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: smajobb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smajobb_production
+      POSTGRES_USER: smajobb_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - smajobb-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smajobb_user -d smajobb_production"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: smajobb-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - smajobb-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Småjobb Backend API
+  smajobb-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: smajobb-api
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - DB_HOST=postgres
+      - DB_NAME=smajobb_production
+      - DB_USER=smajobb_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=5432
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ISSUER=${JWT_ISSUER}
+      - JWT_AUDIENCE=${JWT_AUDIENCE}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - REDIS_CONNECTION_STRING=redis:6379,password=${REDIS_PASSWORD}
+    volumes:
+      - uploads_data:/app/uploads
+      - thumbnails_data:/app/thumbnails
+      - logs_data:/app/logs
+    ports:
+      - "8080:8080"
+    networks:
+      - smajobb-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: smajobb-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - uploads_data:/var/www/uploads:ro
+      - thumbnails_data:/var/www/thumbnails:ro
+      - logs_data:/var/log/nginx
+    networks:
+      - smajobb-network
+    depends_on:
+      - smajobb-api
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (if serving from same server)
+  smajobb-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    container_name: smajobb-frontend
+    restart: unless-stopped
+    volumes:
+      - frontend_data:/usr/share/nginx/html
+    networks:
+      - smajobb-network
+    depends_on:
+      - nginx
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  uploads_data:
+    driver: local
+  thumbnails_data:
+    driver: local
+  logs_data:
+    driver: local
+  frontend_data:
+    driver: local
+
+networks:
+  smajobb-network:
+    driver: bridge

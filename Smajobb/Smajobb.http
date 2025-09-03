@@ -1,0 +1,6 @@
+@Smajobb_HostAddress = http://localhost:5106
+
+GET {{Smajobb_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
