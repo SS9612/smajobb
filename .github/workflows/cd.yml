@@ -52,7 +52,7 @@ jobs:
           type=raw,value=staging-latest
 
     - name: Build and push backend image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         file: ./Dockerfile.production
@@ -63,7 +63,7 @@ jobs:
         cache-to: type=gha,mode=max
 
     - name: Build and push frontend image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: ./frontend
         file: ./frontend/Dockerfile.production
@@ -132,7 +132,7 @@ jobs:
           type=raw,value=production-latest
 
     - name: Build and push backend image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         file: ./Dockerfile.production
@@ -143,7 +143,7 @@ jobs:
         cache-to: type=gha,mode=max
 
     - name: Build and push frontend image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: ./frontend
         file: ./frontend/Dockerfile.production
