@@ -1,353 +1,190 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import JobSearchFilters from '../components/JobSearchFilters';
-import JobList from '../components/JobList';
+import { jobsApi as jobApi, Job } from '../services/jobsApi';
 import LoadingSpinner from '../components/LoadingSpinner';
-
-interface JobCategory {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  color: string;
-}
-
-interface Job {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  priceType: string;
-  price: number;
-  status: string;
-  urgency: string;
-  estimatedHours: number;
-  viewCount: number;
-  applicationCount: number;
-  createdAt: string;
-  startsAt?: string;
-  endsAt?: string;
-  address?: string;
-  creator: {
-    id: string;
-    displayName: string;
-    city?: string;
-  };
-}
-
-interface SearchFilters {
-  query: string;
-  category: string;
-  priceType: string;
-  minPrice: number;
-  maxPrice: number;
-  urgency: string;
-  location: string;
-  sortBy: string;
-  sortOrder: 'asc' | 'desc';
-}
+import JobFilters from '../components/jobs/JobFilters';
+import JobCard from '../components/jobs/JobCard';
 
 const Jobs: React.FC = () => {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  
-  // State
+  const [searchParams] = useSearchParams();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [categories, setCategories] = useState<JobCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  
-  // Filters state
-  const [filters, setFilters] = useState<SearchFilters>({
-    query: searchParams.get('q') || '',
-    category: searchParams.get('category') || '',
-    priceType: searchParams.get('priceType') || '',
-    minPrice: parseInt(searchParams.get('minPrice') || '0'),
-    maxPrice: parseInt(searchParams.get('maxPrice') || '0'),
-    urgency: searchParams.get('urgency') || '',
-    location: searchParams.get('location') || '',
-    sortBy: searchParams.get('sortBy') || 'createdAt',
-    sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc'
+  const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState({
+    category: 'Alla kategorier',
+    location: '',
+    priceType: 'Alla pristyper' as 'Alla pristyper' | 'fixed' | 'hourly',
+    urgency: 'Alla prioriteringar' as 'Alla prioriteringar' | 'low' | 'medium' | 'high',
+    sortBy: 'Senaste först'
   });
-
-  const loadCategories = async () => {
-    try {
-      const response = await fetch('/api/job/categories');
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      } else {
-        // Fallback categories
-        setCategories([
-          { id: '1', name: 'Hushållsarbete', description: 'Städning, tvätt, matlagning', icon: '🏠', color: '#3B82F6' },
-          { id: '2', name: 'Trädgård & Utomhus', description: 'Trädgårdsarbete, snöröjning', icon: '🌱', color: '#10B981' },
-          { id: '3', name: 'Djurvård', description: 'Hundvandring, kattvakt', icon: '🐕', color: '#F59E0B' },
-          { id: '4', name: 'Undervisning', description: 'Läxhjälp, språklektioner', icon: '📚', color: '#8B5CF6' },
-          { id: '5', name: 'Tekniskt Stöd', description: 'IT-hjälp, installationer', icon: '💻', color: '#EF4444' },
-          { id: '6', name: 'Evenemangshjälp', description: 'Festhjälp, catering', icon: '🎉', color: '#EC4899' }
-        ]);
-      }
-    } catch (error) {
-      console.error('Error loading categories:', error);
-      // Use fallback categories
-      setCategories([
-        { id: '1', name: 'Hushållsarbete', description: 'Städning, tvätt, matlagning', icon: '🏠', color: '#3B82F6' },
-        { id: '2', name: 'Trädgård & Utomhus', description: 'Trädgårdsarbete, snöröjning', icon: '🌱', color: '#10B981' },
-        { id: '3', name: 'Djurvård', description: 'Hundvandring, kattvakt', icon: '🐕', color: '#F59E0B' },
-        { id: '4', name: 'Undervisning', description: 'Läxhjälp, språklektioner', icon: '📚', color: '#8B5CF6' },
-        { id: '5', name: 'Tekniskt Stöd', description: 'IT-hjälp, installationer', icon: '💻', color: '#EF4444' },
-        { id: '6', name: 'Evenemangshjälp', description: 'Festhjälp, catering', icon: '🎉', color: '#EC4899' }
-      ]);
-    }
-  };
 
   const loadJobs = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
+      const query = searchParams.get('q') || '';
+      const filterParams: any = { ...filters, query };
       
-      // Build query parameters
-      const params = new URLSearchParams();
-      if (filters.query) params.append('q', filters.query);
-      if (filters.category) params.append('category', filters.category);
-      if (filters.priceType) params.append('priceType', filters.priceType);
-      if (filters.minPrice > 0) params.append('minPrice', filters.minPrice.toString());
-      if (filters.maxPrice > 0) params.append('maxPrice', filters.maxPrice.toString());
-      if (filters.urgency) params.append('urgency', filters.urgency);
-      if (filters.location) params.append('location', filters.location);
-      params.append('sortBy', filters.sortBy);
-      params.append('sortOrder', filters.sortOrder);
-      params.append('page', currentPage.toString());
-      params.append('limit', '12');
-      
-      const response = await fetch(`/api/job?${params.toString()}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setJobs(data.jobs || []);
-        setTotalPages(data.totalPages || 1);
-        setTotalCount(data.totalCount || 0);
-      } else {
-        // Mock data for development
-        const mockJobs: Job[] = [
-          {
-            id: '1',
-            title: 'Städning av lägenhet',
-            description: 'Behöver hjälp med städning av min 3:a i centrala Stockholm. Inkluderar badrum, kök och vardagsrum.',
-            category: 'Hushållsarbete',
-            priceType: 'hourly',
-            price: 150,
-            status: 'open',
-            urgency: 'medium',
-            estimatedHours: 4,
-            viewCount: 23,
-            applicationCount: 5,
-            createdAt: new Date().toISOString(),
-            address: 'Stockholm, Sverige',
-            creator: {
-              id: '1',
-              displayName: 'Anna Svensson',
-              city: 'Stockholm'
-            }
-          },
-          {
-            id: '2',
-            title: 'Hundvandring',
-            description: 'Behöver någon som kan gå ut med min golden retriever 2 gånger per dag under veckan.',
-            category: 'Djurvård',
-            priceType: 'fixed',
-            price: 800,
-            status: 'open',
-            urgency: 'high',
-            estimatedHours: 10,
-            viewCount: 45,
-            applicationCount: 8,
-            createdAt: new Date(Date.now() - 86400000).toISOString(),
-            address: 'Göteborg, Sverige',
-            creator: {
-              id: '2',
-              displayName: 'Erik Johansson',
-              city: 'Göteborg'
-            }
-          },
-          {
-            id: '3',
-            title: 'Läxhjälp i matematik',
-            description: 'Min dotter behöver hjälp med matematik på gymnasienivå. Vi bor i Malmö.',
-            category: 'Undervisning',
-            priceType: 'hourly',
-            price: 200,
-            status: 'open',
-            urgency: 'low',
-            estimatedHours: 6,
-            viewCount: 12,
-            applicationCount: 3,
-            createdAt: new Date(Date.now() - 172800000).toISOString(),
-            address: 'Malmö, Sverige',
-            creator: {
-              id: '3',
-              displayName: 'Maria Andersson',
-              city: 'Malmö'
-            }
-          }
-        ];
-        
-        setJobs(mockJobs);
-        setTotalPages(1);
-        setTotalCount(mockJobs.length);
+      // Map Swedish sortBy values to English
+      if (filterParams.sortBy === 'Senaste först') {
+        filterParams.sortBy = 'createdAt';
+      } else if (filterParams.sortBy === 'Pris (lägst först)') {
+        filterParams.sortBy = 'price';
+        filterParams.sortOrder = 'asc';
+      } else if (filterParams.sortBy === 'Pris (högst först)') {
+        filterParams.sortBy = 'price';
+        filterParams.sortOrder = 'desc';
+      } else if (filterParams.sortBy === 'Prioritet') {
+        filterParams.sortBy = 'urgency';
       }
+      
+      // Remove filter values that are not valid for the API
+      if (filterParams.priceType === 'Alla pristyper') {
+        delete filterParams.priceType;
+      }
+      if (filterParams.urgency === 'Alla prioriteringar') {
+        delete filterParams.urgency;
+      }
+      if (filterParams.category === 'Alla kategorier') {
+        delete filterParams.category;
+      }
+      const jobsData = await jobApi.getJobs(filterParams);
+      setJobs(jobsData);
     } catch (error) {
-      console.error('Error loading jobs:', error);
-      setError('Kunde inte ladda jobb. Försök igen senare.');
-      setJobs([]);
+      console.error('Failed to load jobs:', error);
+      setError('Kunde inte ladda jobb');
     } finally {
       setLoading(false);
     }
-  }, [filters, currentPage]);
+  }, [searchParams, filters]);
 
-  // Load categories on mount
-  useEffect(() => {
-    loadCategories();
+  const loadSavedJobs = useCallback(async () => {
+    try {
+      // TODO: Implement saved jobs endpoint in backend
+      // For now, return empty array to prevent errors
+      setSavedJobs(new Set());
+    } catch (error) {
+      console.error('Failed to load saved jobs:', error);
+    }
   }, []);
 
-  // Load jobs when filters change
   useEffect(() => {
     loadJobs();
   }, [loadJobs]);
 
-  const handleFiltersChange = (newFilters: SearchFilters) => {
-    setFilters(newFilters);
-    setCurrentPage(1);
-    
-    // Update URL parameters
-    const params = new URLSearchParams();
-    if (newFilters.query) params.set('q', newFilters.query);
-    if (newFilters.category) params.set('category', newFilters.category);
-    if (newFilters.priceType) params.set('priceType', newFilters.priceType);
-    if (newFilters.minPrice > 0) params.set('minPrice', newFilters.minPrice.toString());
-    if (newFilters.maxPrice > 0) params.set('maxPrice', newFilters.maxPrice.toString());
-    if (newFilters.urgency) params.set('urgency', newFilters.urgency);
-    if (newFilters.location) params.set('location', newFilters.location);
-    params.set('sortBy', newFilters.sortBy);
-    params.set('sortOrder', newFilters.sortOrder);
-    
-    setSearchParams(params);
+  useEffect(() => {
+    loadSavedJobs();
+  }, [loadSavedJobs]);
+
+  const handleFilterChange = (filter: string, value: string) => {
+    setFilters(prev => ({ ...prev, [filter]: value as any }));
   };
 
-  const handleSearch = () => {
-    setCurrentPage(1);
-    loadJobs();
+  const handleClearFilters = () => {
+    setFilters({
+      category: 'Alla kategorier',
+      location: '',
+      priceType: 'Alla pristyper' as 'Alla pristyper' | 'fixed' | 'hourly',
+      urgency: 'Alla prioriteringar' as 'Alla prioriteringar' | 'low' | 'medium' | 'high',
+      sortBy: 'Senaste först'
+    });
   };
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleSaveJob = async (jobId: string) => {
+    try {
+      await jobApi.saveJob(jobId);
+      setSavedJobs(prev => new Set(Array.from(prev).concat(jobId)));
+    } catch (error) {
+      console.error('Failed to save job:', error);
+    }
   };
 
-  if (error && !loading) {
+  const handleUnsaveJob = async (jobId: string) => {
+    try {
+      await jobApi.unsaveJob(jobId);
+      setSavedJobs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Failed to unsave job:', error);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="jobs-container">
-        <div className="container-wide">
-          <div className="jobs-error">
-            <div className="error-icon">⚠️</div>
-            <h3>Ett fel uppstod</h3>
-            <p>{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="btn btn-primary"
-            >
-              Försök igen
-            </button>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Laddar jobb..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Fel vid laddning</h1>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => loadJobs()}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Försök igen
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="jobs-container">
-      {/* Header */}
-      <div className="jobs-header">
-        <div className="container-wide">
-          <div className="jobs-header-content">
-            <div>
-              <h1 className="jobs-title">Bläddra Bland Jobb</h1>
-              <p className="jobs-subtitle">Hitta perfekta jobbmöjligheter för dig</p>
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {searchParams.get('q') ? `Sökresultat för "${searchParams.get('q')}"` : 'Alla jobb'}
+          </h1>
+          <p className="text-gray-600">
+            {jobs.length} jobb hittades
+          </p>
+        </div>
+
+        <JobFilters
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          onClearFilters={handleClearFilters}
+        />
+
+        {jobs.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
+            <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Inga jobb hittades
+            </h3>
+            <p className="text-gray-500 mb-6">
+              Prova att ändra dina filter eller sök efter något annat.
+            </p>
             <button
               onClick={() => navigate('/jobs/create')}
-              className="jobs-cta-button"
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
             >
               Skapa nytt jobb
             </button>
           </div>
-        </div>
-      </div>
-
-      <div className="container-wide">
-        {/* Search and Filters */}
-        <JobSearchFilters
-          categories={categories}
-          filters={filters}
-          onFiltersChange={handleFiltersChange}
-          onSearch={handleSearch}
-          loading={loading}
-        />
-
-        {/* Results Summary */}
-        {!loading && (
-          <div className="jobs-results-summary">
-            <p className="results-text">
-              Visar <span className="font-semibold">{jobs.length}</span> av <span className="font-semibold">{totalCount}</span> jobb
-              {filters.category && (
-                <> i kategorin <span className="font-semibold">{filters.category}</span></>
-              )}
-            </p>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading && (
-          <div className="jobs-loading">
-            <LoadingSpinner size="lg" text="Hämtar jobb..." />
-          </div>
-        )}
-
-        {/* Jobs List */}
-        {!loading && (
-          <JobList
-            jobs={jobs}
-            loading={loading}
-            emptyMessage="Inga jobb hittades med de valda filtren. Prova att ändra dina söktermer."
-            showCreator={true}
-          />
-        )}
-
-        {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <div className="jobs-pagination">
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="pagination-button"
-            >
-              Föregående
-            </button>
-            
-            <div className="pagination-info">
-              Sida {currentPage} av {totalPages}
-            </div>
-            
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="pagination-button"
-            >
-              Nästa
-            </button>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {jobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                onSave={handleSaveJob}
+                onUnsave={handleUnsaveJob}
+                isSaved={savedJobs.has(job.id)}
+              />
+            ))}
           </div>
         )}
       </div>

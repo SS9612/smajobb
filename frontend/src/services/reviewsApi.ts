@@ -94,5 +94,10 @@ export const reviewsApi = {
   searchReviews: async (searchRequest: ReviewSearchRequest): Promise<Review[]> => {
     const response = await apiService.post<Review[]>('/review/search', searchRequest);
     return response.data;
+  },
+
+  getJobReviews: async (jobId: string): Promise<Review[]> => {
+    const response = await apiService.get<Review[]>(`/review/job/${jobId}`);
+    return response.data;
   }
 };

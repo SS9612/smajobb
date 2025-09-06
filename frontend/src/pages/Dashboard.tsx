@@ -1,175 +1,84 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import DashboardStats from '../components/DashboardStats';
-import RecentActivity from '../components/RecentActivity';
-import QuickActions from '../components/QuickActions';
-import UserProfileCard from '../components/UserProfileCard';
+import { jobsApi as jobApi, Job } from '../services/jobsApi';
 import LoadingSpinner from '../components/LoadingSpinner';
-
-// Define a proper type for the user
-interface User {
-  id: string;
-  displayName: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  city?: string;
-  bio?: string;
-  profileImageUrl?: string;
-  userType: 'customer' | 'youth';
-  isVerified: boolean;
-  joinedAt: string;
-  rating?: number;
-  reviewCount?: number;
-  completedJobs?: number;
-  totalEarnings?: number;
-}
-
-interface DashboardStatsData {
-  totalJobs: number;
-  completedJobs: number;
-  activeJobs: number;
-  pendingJobs: number;
-  totalEarnings: number;
-  thisMonthEarnings: number;
-  averageRating: number;
-  totalReviews: number;
-  responseRate: number;
-  completionRate: number;
-}
-
-interface ActivityItem {
-  id: string;
-  type: 'job_created' | 'job_completed' | 'job_cancelled' | 'application_received' | 'application_accepted' | 'application_rejected' | 'payment_received' | 'review_received' | 'message_received';
-  title: string;
-  description: string;
-  timestamp: string;
-  jobId?: string;
-  userId?: string;
-  amount?: number;
-  status?: string;
-  priority?: 'low' | 'medium' | 'high';
-}
+import DashboardStats from '../components/dashboard/DashboardStats';
+import RecentJobs from '../components/dashboard/RecentJobs';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user: authUser, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
-
-  // Derive user from auth
-  const user: User | null = authUser
-    ? {
-        id: authUser.id,
-        displayName: authUser.displayName,
-        email: authUser.email,
-        firstName: authUser.firstName,
-        lastName: authUser.lastName,
-        phone: authUser.phone,
-        city: authUser.location,
-        bio: authUser.bio,
-        userType: authUser.userType,
-        isVerified: authUser.isVerified,
-        joinedAt: authUser.createdAt,
-      }
-    : null;
-
-  // Mock stats data
-  const [stats] = useState<DashboardStatsData>({
-    totalJobs: 24,
-    completedJobs: 18,
-    activeJobs: 3,
-    pendingJobs: 2,
-    totalEarnings: 2840,
-    thisMonthEarnings: 420,
-    averageRating: 4.8,
-    totalReviews: 24,
-    responseRate: 95,
-    completionRate: 88
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    totalJobs: 0,
+    activeJobs: 0,
+    completedJobs: 0,
+    totalEarnings: 0,
+    averageRating: 0,
+    totalApplications: 0
   });
 
-  // Mock activity data
-  const [activities] = useState<ActivityItem[]>([
-    {
-      id: '1',
-      type: 'payment_received',
-      title: 'Betalning mottagen',
-      description: 'Betalning mottagen för Trädgårdsskötsel-jobb',
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      jobId: '1',
-      amount: 150,
-      priority: 'high'
-    },
-    {
-      id: '2',
-      type: 'application_received',
-      title: 'Ny ansökan',
-      description: 'Ny ansökan för Husstädning-position från Emma S.',
-      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      jobId: '2',
-      priority: 'medium'
-    },
-    {
-      id: '3',
-      type: 'job_completed',
-      title: 'Jobb genomfört',
-      description: 'Trädgårdsskötsel-jobb har genomförts av Lucas M.',
-      timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      jobId: '1',
-      amount: 150
-    },
-    {
-      id: '4',
-      type: 'review_received',
-      title: 'Ny recension',
-      description: 'Du har fått en 5-stjärnig recension från Sofia K.',
-      timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      jobId: '3'
-    },
-    {
-      id: '5',
-      type: 'message_received',
-      title: 'Nytt meddelande',
-      description: 'Meddelande från Erik J. om Hundrastning-jobb',
-      timestamp: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-      userId: '2'
-    }
-  ]);
-
   useEffect(() => {
-    setLoading(authLoading);
-  }, [authLoading]);
+    if (user) {
+      loadDashboardData();
+    }
+  }, [user]);
 
-  const handleEditProfile = () => {
-    navigate('/profile');
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const jobsData = await jobApi.getUserJobs(user?.id);
+      setJobs(jobsData);
+      
+      // Calculate stats
+      const activeJobs = jobsData.filter(job => job.status === 'active');
+      const completedJobs = jobsData.filter(job => job.status === 'completed');
+      const totalEarnings = completedJobs.reduce((sum, job) => sum + job.budget, 0);
+      const totalApplications = jobsData.reduce((sum, job) => sum + (job.applicationCount || 0), 0);
+      
+      setStats({
+        totalJobs: jobsData.length,
+        activeJobs: activeJobs.length,
+        completedJobs: completedJobs.length,
+        totalEarnings,
+        averageRating: 4.5, // This would come from reviews
+        totalApplications
+      });
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      setError('Kunde inte ladda instrumentpanelen');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const tabs = [
-    { id: 'overview', name: 'Översikt', icon: '📊' },
-    { id: 'jobs', name: 'Jobb', icon: '💼' },
-    { id: 'activity', name: 'Aktivitet', icon: '📈' },
-    { id: 'settings', name: 'Inställningar', icon: '⚙️' }
-  ];
+  const handleJobClick = (jobId: string) => {
+    navigate(`/jobs/${jobId}`);
+  };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
-      <div className="dashboard-container">
-        <div className="dashboard-header">
-          <div className="container-wide">
-            <div className="dashboard-header-content">
-              <div>
-                <h1 className="dashboard-title">Instrumentpanel</h1>
-                <p className="dashboard-subtitle">Laddar...</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="container-wide">
-          <div className="dashboard-loading">
-            <LoadingSpinner size="lg" text="Laddar instrumentpanel..." />
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Laddar instrumentpanel..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Fel vid laddning</h1>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => loadDashboardData()}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Försök igen
+          </button>
         </div>
       </div>
     );
@@ -177,148 +86,69 @@ const Dashboard: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="dashboard-container">
-        <div className="container-wide">
-          <div className="dashboard-content">
-            <p>Du måste vara inloggad för att se instrumentpanelen.</p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Du är inte inloggad</h1>
+          <p className="text-gray-600 mb-6">Logga in för att se din instrumentpanel</p>
+          <button
+            onClick={() => navigate('/login')}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Logga in
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="dashboard-container">
-      {/* Header */}
-      <div className="dashboard-header">
-        <div className="container-wide">
-          <div className="dashboard-header-content">
-            <div>
-              <h1 className="dashboard-title">Instrumentpanel</h1>
-              <p className="dashboard-subtitle">Välkommen tillbaka, {user.displayName}!</p>
-            </div>
-            <button
-              onClick={() => navigate('/jobs/create')}
-              className="dashboard-cta-button"
-            >
-              Skapa nytt jobb
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="container-wide">
-        {/* Navigation Tabs */}
-        <div className="dashboard-tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`dashboard-tab ${activeTab === tab.id ? 'active' : ''}`}
-            >
-              <span className="tab-icon">{tab.icon}</span>
-              <span className="tab-name">{tab.name}</span>
-            </button>
-          ))}
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Välkommen tillbaka, {user.firstName || user.displayName}!
+          </h1>
+          <p className="text-gray-600 mt-1">Här är en översikt av din aktivitet</p>
         </div>
 
-        {/* Tab Content */}
-        {activeTab === 'overview' && (
-          <div className="dashboard-content">
-            {/* Stats */}
-            <DashboardStats
-              stats={stats}
-              userType={user.userType}
-              loading={false}
-            />
+        <DashboardStats stats={stats} />
 
-            {/* Main Grid */}
-            <div className="dashboard-grid">
-              {/* Left Column */}
-              <div className="dashboard-main">
-                {/* Recent Activity */}
-                <RecentActivity
-                  activities={activities}
-                  loading={false}
-                  showAll={false}
-                  limit={5}
-                />
-              </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <RecentJobs
+            jobs={jobs}
+            onJobClick={handleJobClick}
+          />
 
-              {/* Right Column */}
-              <div className="dashboard-sidebar">
-                {/* User Profile Card */}
-                <UserProfileCard
-                  user={user}
-                  showActions={true}
-                  isOwnProfile={true}
-                  onEdit={handleEditProfile}
-                />
-
-                {/* Quick Actions */}
-                <QuickActions
-                  userType={user.userType}
-                  showTitle={true}
-                  columns={1}
-                />
-              </div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Snabbåtgärder</h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => navigate('/jobs/create')}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors text-left"
+              >
+                Skapa nytt jobb
+              </button>
+              <button
+                onClick={() => navigate('/jobs')}
+                className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors text-left"
+              >
+                Bläddra jobb
+              </button>
+              <button
+                onClick={() => navigate('/profile')}
+                className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors text-left"
+              >
+                Redigera profil
+              </button>
+              <button
+                onClick={() => navigate('/notifications')}
+                className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors text-left"
+              >
+                Visa notifikationer
+              </button>
             </div>
           </div>
-        )}
-
-        {activeTab === 'jobs' && (
-          <div className="dashboard-content">
-            <div className="dashboard-section">
-              <h2>Mina jobb</h2>
-              <p>Hantera dina jobb och ansökningar</p>
-              <div className="dashboard-placeholder">
-                <div className="placeholder-icon">💼</div>
-                <h3>Jobbhantering</h3>
-                <p>Här kommer du att kunna hantera alla dina jobb</p>
-                <button
-                  onClick={() => navigate('/jobs/manage')}
-                  className="btn btn-primary"
-                >
-                  Hantera jobb
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'activity' && (
-          <div className="dashboard-content">
-            <div className="dashboard-section">
-              <h2>All aktivitet</h2>
-              <p>Se all din aktivitet på plattformen</p>
-              <RecentActivity
-                activities={activities}
-                loading={false}
-                showAll={true}
-              />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="dashboard-content">
-            <div className="dashboard-section">
-              <h2>Inställningar</h2>
-              <p>Hantera dina kontoinställningar</p>
-              <div className="dashboard-placeholder">
-                <div className="placeholder-icon">⚙️</div>
-                <h3>Kontoinställningar</h3>
-                <p>Här kommer du att kunna hantera dina inställningar</p>
-                <button
-                  onClick={() => navigate('/profile')}
-                  className="btn btn-primary"
-                >
-                  Gå till profil
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

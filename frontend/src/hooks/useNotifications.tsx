@@ -40,7 +40,7 @@ interface NotificationProviderProps {
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [stats, setStats] = useState<NotificationStats | null>(null);
@@ -52,7 +52,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
   // Initialize SignalR connection
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    if (!user) {
       if (connection) {
         connection.stop();
         setConnection(null);
@@ -150,18 +150,18 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         connection.stop();
       }
     };
-  }, [isAuthenticated, user, notificationCallbacks]);
+  }, [user, notificationCallbacks]);
 
   // Load initial data
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (user) {
       refreshNotifications();
       refreshStats();
     }
-  }, [isAuthenticated, user]);
+  }, [user]);
 
   const refreshNotifications = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!user) return;
 
     try {
       setLoading(true);
@@ -175,10 +175,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [user]);
 
   const refreshStats = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!user) return;
 
     try {
       const statsData = await notificationsApi.getNotificationStats();
@@ -186,7 +186,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     } catch (err: any) {
       console.error('Error loading notification stats:', err);
     }
-  }, [isAuthenticated]);
+  }, [user]);
 
   const markAsRead = useCallback(async (id: string) => {
     try {
@@ -211,7 +211,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
   const markAllAsRead = useCallback(async () => {
     try {
-      const result = await notificationsApi.markAllAsRead();
+      await notificationsApi.markAllAsRead();
       setNotifications(prev => 
         prev.map(n => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
       );
@@ -245,7 +245,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   }, []);
 
   const onNotificationReceived = useCallback((callback: (notification: NotificationEvent) => void) => {
-    setNotificationCallbacks(prev => new Set([...prev, callback]));
+    setNotificationCallbacks(prev => new Set(Array.from(prev).concat(callback)));
   }, []);
 
   const offNotificationReceived = useCallback((callback: (notification: NotificationEvent) => void) => {

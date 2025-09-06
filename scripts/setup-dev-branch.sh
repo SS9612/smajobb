@@ -9,7 +9,7 @@ echo "🚀 Setting up Smajobb development environment..."
 
 # Check if git is initialized
 if [ ! -d ".git" ]; then
-    echo "📁 Initializing git repository..."
+    echo " Initializing git repository..."
     git init
     git add .
     git commit -m "Initial commit: Smajobb project setup"

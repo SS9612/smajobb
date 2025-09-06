@@ -11,6 +11,8 @@ using Smajobb.Services;
 using Smajobb.Services.Interfaces;
 using Smajobb.Authorization;
 using Smajobb.Middleware;
+using NetTopologySuite;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -67,9 +69,18 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
-builder.Services.AddScoped<ISearchService, SearchService>();
+// builder.Services.AddScoped<ISearchService, SearchService>();
 builder.Services.AddScoped<IMediaService, MediaService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<IAlertingService, AlertingService>();
+
+// Configure alerting options
+builder.Services.Configure<AlertingOptions>(builder.Configuration.GetSection("Alerting"));
+
+// Add background services
+// builder.Services.AddHostedService<SystemMetricsCollector>();
+// builder.Services.AddHostedService<AlertingBackgroundService>();
 
 // Add HTTP context accessor for authorization
 builder.Services.AddHttpContextAccessor();
@@ -78,7 +89,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSignalR();
 
 // Add other services as they are implemented
-// builder.Services.AddScoped<IJobService, JobService>();
+builder.Services.AddScoped<IJobService, JobService>();
 // builder.Services.AddScoped<IBookingService, BookingService>();
 // builder.Services.AddScoped<IWorkSessionService, WorkSessionService>();
 // builder.Services.AddScoped<IPaymentService, PaymentService>();
@@ -118,6 +129,9 @@ app.UseHttpsRedirection();
 
 app.UseCors("AllowAll");
 
+// Add performance monitoring middleware
+// app.UsePerformanceMonitoring();
+
 // Add JWT middleware
 app.UseMiddleware<JwtMiddleware>();
 
@@ -138,6 +152,8 @@ app.MapHub<Smajobb.Hubs.NotificationHub>("/hubs/notification");
 //     await context.Database.EnsureCreatedAsync();
 // }
 
+// Configure to listen on port 80 for Docker
+app.Urls.Add("http://0.0.0.0:80");
 app.Run();
 
 // Simple authorization filter for Hangfire dashboard - REMOVED FOR NOW

@@ -7,14 +7,10 @@ export interface LoginRequest {
 }
 
 export interface RegisterRequest {
-  firstName: string;
-  lastName: string;
   email: string;
   phone: string;
-  birthDate?: string;
-  userType: 'customer' | 'youth';
-  password: string;
-  confirmPassword: string;
+  displayName: string;
+  role: 'customer' | 'youth';
 }
 
 export interface AuthResponse {
@@ -44,6 +40,7 @@ export interface UserProfile {
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  role?: string;
 }
 
 // Authentication API service
@@ -56,7 +53,7 @@ export const authApi = {
 
   // Register new user
   register: async (userData: RegisterRequest): Promise<AuthResponse> => {
-    const response = await apiService.post<AuthResponse>('/auth/register', userData);
+    const response = await apiService.post<AuthResponse>('/user/register', userData);
     return response.data;
   },
 

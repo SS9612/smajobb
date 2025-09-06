@@ -47,6 +47,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
           setShowSuggestionsList(true);
         } catch (error) {
           console.error('Error fetching suggestions:', error);
+          // Don't show suggestions if API fails, but don't break the search functionality
+          setSuggestions([]);
+          setShowSuggestionsList(false);
         } finally {
           setIsLoading(false);
         }

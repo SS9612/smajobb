@@ -20,6 +20,50 @@ public class AuthController : ControllerBase
         _logger = logger;
     }
 
+    [HttpPost("login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Login([FromBody] Smajobb.DTOs.LoginRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+            {
+                return BadRequest("Email and password are required");
+            }
+
+            // For development: simple mock authentication
+            // In production, this would validate against a user database
+            if (request.Email == "test@example.com" && request.Password == "password")
+            {
+                var mockUser = new
+                {
+                    id = Guid.NewGuid().ToString(),
+                    firstName = "Test",
+                    lastName = "User",
+                    email = request.Email,
+                    phone = "1234567890",
+                    userType = "customer",
+                    displayName = "Test User"
+                };
+
+                var token = "mock-jwt-token-" + Guid.NewGuid().ToString();
+                
+                return Ok(new
+                {
+                    token = token,
+                    user = mockUser
+                });
+            }
+
+            return Unauthorized("Invalid email or password");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during login");
+            return StatusCode(500, "Internal server error");
+        }
+    }
+
     [HttpPost("bankid/initiate")]
     public async Task<IActionResult> InitiateBankIdAuthentication([FromBody] BankIdInitiateRequest request)
     {

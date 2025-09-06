@@ -48,25 +48,7 @@ public class JobDto
     public int? MaxAge { get; set; }
 }
 
-public class JobSearchDto
-{
-    public string? SearchTerm { get; set; }
-    public string? Category { get; set; }
-    public string? Status { get; set; }
-    public string? PriceType { get; set; }
-    public int? MinPrice { get; set; }
-    public int? MaxPrice { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
-    public double? RadiusKm { get; set; }
-    public DateTime? AvailableFrom { get; set; }
-    public DateTime? AvailableTo { get; set; }
-    public Guid? CreatorId { get; set; }
-    public int Page { get; set; } = 1;
-    public int PageSize { get; set; } = 20;
-    public string? SortBy { get; set; } = "createdAt";
-    public string? SortOrder { get; set; } = "desc";
-}
+
 
 public class JobCategoryDto
 {

@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using NetTopologySuite.Geometries;
 
 namespace Smajobb.Models;
 
@@ -20,7 +19,7 @@ public class Job
     [StringLength(100)]
     public string Category { get; set; } = string.Empty;
     
-    public Point? Location { get; set; }
+    public string? Location { get; set; }
     
     [StringLength(200)]
     public string? Address { get; set; }

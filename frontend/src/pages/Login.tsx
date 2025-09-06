@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-// import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  // const { login, error, clearError } = useAuth();
-  const login = async (email: string, password: string) => { return true; }; // Temporary mock login
-  const error = null; // Temporary mock error
-  const clearError = () => {}; // Temporary mock clearError
+  const { login, error, clearError } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',

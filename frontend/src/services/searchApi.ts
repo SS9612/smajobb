@@ -1,4 +1,4 @@
-import { apiService } from './api';
+import { apiService, publicApiService } from './api';
 
 export interface JobSearchRequest {
   query?: string;
@@ -123,7 +123,7 @@ export interface User {
 
 export const searchApi = {
   searchJobs: async (searchRequest: JobSearchRequest): Promise<SearchResult<Job>> => {
-    const response = await apiService.post<SearchResult<Job>>('/search/jobs', searchRequest);
+    const response = await publicApiService.post<SearchResult<Job>>('/search/jobs', searchRequest);
     return response.data;
   },
 
@@ -139,12 +139,12 @@ export const searchApi = {
       }
     });
     
-    const response = await apiService.get<SearchFilters>(`/search/jobs/filters?${params.toString()}`);
+    const response = await publicApiService.get<SearchFilters>(`/search/jobs/filters?${params.toString()}`);
     return response.data;
   },
 
   getJobSearchSuggestions: async (query: string, limit: number = 10): Promise<SearchSuggestion[]> => {
-    const response = await apiService.get<SearchSuggestion[]>(`/search/jobs/suggestions?query=${encodeURIComponent(query)}&limit=${limit}`);
+    const response = await publicApiService.get<SearchSuggestion[]>(`/search/jobs/suggestions?query=${encodeURIComponent(query)}&limit=${limit}`);
     return response.data;
   },
 
@@ -159,17 +159,17 @@ export const searchApi = {
   },
 
   getPopularSearches: async (limit: number = 10): Promise<string[]> => {
-    const response = await apiService.get<string[]>(`/search/popular/searches?limit=${limit}`);
+    const response = await publicApiService.get<string[]>(`/search/popular/searches?limit=${limit}`);
     return response.data;
   },
 
   getPopularCategories: async (limit: number = 10): Promise<string[]> => {
-    const response = await apiService.get<string[]>(`/search/popular/categories?limit=${limit}`);
+    const response = await publicApiService.get<string[]>(`/search/popular/categories?limit=${limit}`);
     return response.data;
   },
 
   getPopularSkills: async (limit: number = 10): Promise<string[]> => {
-    const response = await apiService.get<string[]>(`/search/popular/skills?limit=${limit}`);
+    const response = await publicApiService.get<string[]>(`/search/popular/skills?limit=${limit}`);
     return response.data;
   },
 

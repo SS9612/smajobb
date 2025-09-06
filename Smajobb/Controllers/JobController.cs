@@ -20,6 +20,7 @@ public class JobController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetJobs([FromQuery] JobSearchDto searchDto)
     {
         try
@@ -206,7 +207,7 @@ public class JobController : ControllerBase
             {
                 Latitude = latitude,
                 Longitude = longitude,
-                RadiusKm = radiusKm
+                RadiusKm = (int)radiusKm
             };
             var jobs = await _jobService.SearchJobsAsync(searchDto);
             return Ok(jobs);

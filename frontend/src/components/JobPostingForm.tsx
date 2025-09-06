@@ -1,373 +1,189 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-interface JobCategory {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  color: string;
-}
+import { jobsApi as jobApi } from '../services/jobsApi';
+import LoadingSpinner from './LoadingSpinner';
+import JobBasicInfo from './forms/JobBasicInfo';
+import JobPricing from './forms/JobPricing';
+import JobRequirements from './forms/JobRequirements';
 
 interface JobPostingFormData {
   title: string;
   description: string;
   category: string;
   priceType: 'hourly' | 'fixed';
-  price: number;
-  estimatedHours: number;
+  budget: string;
+  estimatedHours: string;
   urgency: 'low' | 'medium' | 'high';
-  address: string;
-  requiredSkills: string;
-  specialInstructions: string;
-  minAge?: number;
-  maxAge?: number;
-  requiresBackgroundCheck: boolean;
-  startsAt: string;
-  endsAt: string;
+  location: string;
+  requirements: string[];
+  deadline: string;
 }
 
 const JobPostingForm: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState<JobCategory[]>([]);
   const [formData, setFormData] = useState<JobPostingFormData>({
     title: '',
     description: '',
     category: '',
-    priceType: 'hourly',
-    price: 0,
-    estimatedHours: 1,
+    priceType: 'fixed',
+    budget: '',
+    estimatedHours: '',
     urgency: 'medium',
-    address: '',
-    requiredSkills: '',
-    specialInstructions: '',
-    minAge: undefined,
-    maxAge: undefined,
-    requiresBackgroundCheck: false,
-    startsAt: '',
-    endsAt: ''
+    location: '',
+    requirements: [],
+    deadline: ''
   });
 
-  useEffect(() => {
-    // Load job categories
-    loadCategories();
-  }, []);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
 
-  const loadCategories = async () => {
-    try {
-      const response = await fetch('/api/job/categories');
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data);
-      }
-    } catch (error) {
-      console.error('Error loading categories:', error);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  const handleRequirementAdd = (requirement: string) => {
+    if (requirement && !formData.requirements.includes(requirement)) {
+      setFormData(prev => ({
+        ...prev,
+        requirements: [...prev.requirements, requirement]
+      }));
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      setFormData(prev => ({ ...prev, [name]: checked }));
-    } else if (type === 'number') {
-      setFormData(prev => ({ ...prev, [name]: value ? parseInt(value) : undefined }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+  const handleRequirementRemove = (requirement: string) => {
+    setFormData(prev => ({
+      ...prev,
+      requirements: prev.requirements.filter(r => r !== requirement)
+    }));
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.title.trim()) {
+      newErrors.title = 'Jobbtitel är obligatorisk';
     }
+
+    if (!formData.description.trim()) {
+      newErrors.description = 'Beskrivning är obligatorisk';
+    } else if (formData.description.length < 50) {
+      newErrors.description = 'Beskrivningen måste vara minst 50 tecken';
+    }
+
+    if (!formData.category) {
+      newErrors.category = 'Kategori är obligatorisk';
+    }
+
+    if (!formData.location.trim()) {
+      newErrors.location = 'Plats är obligatorisk';
+    }
+
+    if (!formData.budget.trim()) {
+      newErrors.budget = 'Pris är obligatoriskt';
+    } else if (isNaN(Number(formData.budget)) || Number(formData.budget) <= 0) {
+      newErrors.budget = 'Pris måste vara ett giltigt nummer större än 0';
+    }
+
+    if (!formData.estimatedHours.trim()) {
+      newErrors.estimatedHours = 'Uppskattad tid är obligatorisk';
+    } else if (isNaN(Number(formData.estimatedHours)) || Number(formData.estimatedHours) <= 0) {
+      newErrors.estimatedHours = 'Uppskattad tid måste vara ett giltigt nummer större än 0';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
-
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/job', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
-
-      if (response.ok) {
-        const job = await response.json();
-        navigate(`/jobs/${job.id}`);
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.message}`);
-      }
+      const jobData = {
+        ...formData,
+        budget: Number(formData.budget),
+        estimatedHours: Number(formData.estimatedHours),
+        deadline: formData.deadline || undefined
+      };
+      
+      await jobApi.createJob(jobData);
+      navigate('/jobs');
     } catch (error) {
-      console.error('Error creating job:', error);
-      alert('An error occurred while creating the job');
+      console.error('Failed to create job:', error);
+      setErrors({ general: 'Kunde inte skapa jobbet. Försök igen.' });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="job-posting-form">
-      <div className="form-header">
-        <h1>Skapa nytt jobb</h1>
-        <p>Fyll i informationen nedan för att publicera ditt jobb</p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Skapa nytt jobb</h1>
+            <p className="text-gray-600 mt-1">Fyll i formuläret för att publicera ditt jobb</p>
+          </div>
 
-      <form onSubmit={handleSubmit} className="form-content">
-        {/* Basic Information */}
-        <div className="form-section">
-          <h2>Grundinformation</h2>
-          
-          <div className="form-group">
-            <label htmlFor="title">Jobbtitel *</label>
-            <input
-              type="text"
-              id="title"
-              name="title"
-              value={formData.title}
-              onChange={handleInputChange}
-              required
-              placeholder="T.ex. Städning av lägenhet"
-              className="form-input"
+          {errors.general && (
+            <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {errors.general}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <JobBasicInfo
+              formData={formData}
+              errors={errors}
+              onInputChange={handleInputChange}
             />
-          </div>
 
-          <div className="form-group">
-            <label htmlFor="description">Beskrivning *</label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              required
-              rows={4}
-              placeholder="Beskriv vad som behöver göras..."
-              className="form-textarea"
+            <JobPricing
+              formData={formData}
+              errors={errors}
+              onInputChange={handleInputChange}
             />
-          </div>
 
-          <div className="form-group">
-            <label htmlFor="category">Kategori *</label>
-            <select
-              id="category"
-              name="category"
-              value={formData.category}
-              onChange={handleInputChange}
-              required
-              className="form-select"
-            >
-              <option value="">Välj kategori</option>
-              {categories.map(category => (
-                <option key={category.id} value={category.name}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+            <JobRequirements
+              formData={formData}
+              errors={errors}
+              onInputChange={handleInputChange}
+              onRequirementAdd={handleRequirementAdd}
+              onRequirementRemove={handleRequirementRemove}
+            />
 
-        {/* Pricing */}
-        <div className="form-section">
-          <h2>Pris och tidsuppskattning</h2>
-          
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="priceType">Pristyp *</label>
-              <select
-                id="priceType"
-                name="priceType"
-                value={formData.priceType}
-                onChange={handleInputChange}
-                className="form-select"
+            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => navigate('/jobs')}
+                className="px-6 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
-                <option value="hourly">Per timme</option>
-                <option value="fixed">Fast pris</option>
-              </select>
+                Avbryt
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? (
+                  <div className="flex items-center">
+                    <LoadingSpinner size="sm" />
+                    <span className="ml-2">Skapar jobb...</span>
+                  </div>
+                ) : (
+                  'Publicera jobb'
+                )}
+              </button>
             </div>
-
-            <div className="form-group">
-              <label htmlFor="price">Pris (SEK) *</label>
-              <input
-                type="number"
-                id="price"
-                name="price"
-                value={formData.price}
-                onChange={handleInputChange}
-                required
-                min="0"
-                className="form-input"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="estimatedHours">Uppskattad tid (timmar)</label>
-            <input
-              type="number"
-              id="estimatedHours"
-              name="estimatedHours"
-              value={formData.estimatedHours}
-              onChange={handleInputChange}
-              min="1"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="urgency">Prioritet</label>
-            <select
-              id="urgency"
-              name="urgency"
-              value={formData.urgency}
-              onChange={handleInputChange}
-              className="form-select"
-            >
-              <option value="low">Låg</option>
-              <option value="medium">Medium</option>
-              <option value="high">Hög</option>
-            </select>
-          </div>
+          </form>
         </div>
-
-        {/* Location and Timing */}
-        <div className="form-section">
-          <h2>Plats och tid</h2>
-          
-          <div className="form-group">
-            <label htmlFor="address">Adress</label>
-            <input
-              type="text"
-              id="address"
-              name="address"
-              value={formData.address}
-              onChange={handleInputChange}
-              placeholder="T.ex. Storgatan 1, Stockholm"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="startsAt">Startdatum</label>
-              <input
-                type="datetime-local"
-                id="startsAt"
-                name="startsAt"
-                value={formData.startsAt}
-                onChange={handleInputChange}
-                className="form-input"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="endsAt">Slutdatum</label>
-              <input
-                type="datetime-local"
-                id="endsAt"
-                name="endsAt"
-                value={formData.endsAt}
-                onChange={handleInputChange}
-                className="form-input"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Requirements */}
-        <div className="form-section">
-          <h2>Krav och önskemål</h2>
-          
-          <div className="form-group">
-            <label htmlFor="requiredSkills">Erforderliga färdigheter</label>
-            <textarea
-              id="requiredSkills"
-              name="requiredSkills"
-              value={formData.requiredSkills}
-              onChange={handleInputChange}
-              rows={3}
-              placeholder="T.ex. Erfarenhet av städning, körkort..."
-              className="form-textarea"
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="minAge">Minsta ålder</label>
-              <input
-                type="number"
-                id="minAge"
-                name="minAge"
-                value={formData.minAge || ''}
-                onChange={handleInputChange}
-                min="13"
-                max="25"
-                className="form-input"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="maxAge">Högsta ålder</label>
-              <input
-                type="number"
-                id="maxAge"
-                name="maxAge"
-                value={formData.maxAge || ''}
-                onChange={handleInputChange}
-                min="13"
-                max="25"
-                className="form-input"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                name="requiresBackgroundCheck"
-                checked={formData.requiresBackgroundCheck}
-                onChange={handleInputChange}
-                className="form-checkbox"
-              />
-              Kräv bakgrundskontroll
-            </label>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="specialInstructions">Särskilda instruktioner</label>
-            <textarea
-              id="specialInstructions"
-              name="specialInstructions"
-              value={formData.specialInstructions}
-              onChange={handleInputChange}
-              rows={3}
-              placeholder="Eventuella särskilda instruktioner eller önskemål..."
-              className="form-textarea"
-            />
-          </div>
-        </div>
-
-        {/* Submit */}
-        <div className="form-actions">
-          <button
-            type="button"
-            onClick={() => navigate('/jobs')}
-            className="btn btn-secondary"
-          >
-            Avbryt
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn btn-primary"
-          >
-            {loading ? 'Skapar jobb...' : 'Publicera jobb'}
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 };

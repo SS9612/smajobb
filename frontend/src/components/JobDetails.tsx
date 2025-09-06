@@ -1,525 +1,241 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import JobApplicationForm from './JobApplicationForm';
+import { jobApi, Job, User, userApi } from '../services/api';
+import { reviewsApi } from '../services/reviewsApi';
+import LoadingSpinner from './LoadingSpinner';
+import JobHeader from './jobs/JobHeader';
+import JobDescription from './jobs/JobDescription';
+import JobDetailsInfo from './jobs/JobDetails';
+import JobOwner from './jobs/JobOwner';
+import JobApplicationForm from './jobs/JobApplicationForm';
 import PaymentButton from './PaymentButton';
 import ReviewList from './ReviewList';
 import ReviewForm from './ReviewForm';
-import { reviewsApi } from '../services/reviewsApi';
-
-interface Job {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  priceType: string;
-  price: number;
-  status: string;
-  urgency: string;
-  estimatedHours: number;
-  viewCount: number;
-  applicationCount: number;
-  createdAt: string;
-  startsAt?: string;
-  endsAt?: string;
-  address?: string;
-  requiredSkills?: string;
-  specialInstructions?: string;
-  minAge?: number;
-  maxAge?: number;
-  requiresBackgroundCheck: boolean;
-  creator: {
-    id: string;
-    displayName: string;
-    city?: string;
-  };
-}
-
-interface User {
-  id: string;
-  role: string;
-}
 
 const JobDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [job, setJob] = useState<Job | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [owner, setOwner] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
-  const [hasApplied, setHasApplied] = useState(false);
-  const [booking, setBooking] = useState<any>(null);
+  const [isApplied, setIsApplied] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [canReview, setCanReview] = useState(false);
-  const [hasReviewed, setHasReviewed] = useState(false);
-  const [reviewLoading, setReviewLoading] = useState(false);
 
   useEffect(() => {
     if (id) {
-      loadJob();
-      loadUser();
-      loadBooking();
+      loadJobDetails();
+      loadReviews();
     }
   }, [id]);
 
-  useEffect(() => {
-    if (booking && user) {
-      checkReviewStatus();
-    }
-  }, [booking, user]);
-
-  const loadJob = async () => {
+  const loadJobDetails = async () => {
     try {
-      const response = await fetch(`/api/job/${id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setJob(data);
-        
-        // Check if user has already applied
-        checkApplicationStatus(data.id);
-      } else {
-        navigate('/jobs');
+      setLoading(true);
+      const jobData = await jobApi.getJobById(id!);
+      setJob(jobData);
+      
+      // Load owner details
+      if (jobData.postedByUserId) {
+        const ownerData = await userApi.getUserById(jobData.postedByUserId);
+        setOwner(ownerData);
       }
+      
+      // Check if user has applied
+      const applications = await jobApi.getUserApplications();
+      setIsApplied(applications.some((app: any) => app.jobId === id));
+      
+      // Check if job is saved
+      const savedJobs = await jobApi.getSavedJobs();
+      setIsSaved(savedJobs.some((savedJob: any) => savedJob.id === id));
     } catch (error) {
-      console.error('Error loading job:', error);
-      navigate('/jobs');
+      console.error('Failed to load job details:', error);
+      setError('Kunde inte ladda jobbdetaljer');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadUser = async () => {
+  const loadReviews = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const response = await fetch('/api/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data);
-        }
-      }
+      const reviewsData = await reviewsApi.getJobReviews(id!);
+      setReviews(reviewsData);
     } catch (error) {
-      console.error('Error loading user:', error);
+      console.error('Failed to load reviews:', error);
     }
   };
 
-  const loadBooking = async () => {
+  const handleApply = () => {
+    setShowApplicationForm(true);
+  };
+
+  const handleSave = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (token && id) {
-        const response = await fetch(`/api/booking/job/${id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setBooking(data);
-        }
+      if (isSaved) {
+        await jobApi.unsaveJob(id!);
+        setIsSaved(false);
+      } else {
+        await jobApi.saveJob(id!);
+        setIsSaved(true);
       }
     } catch (error) {
-      console.error('Error loading booking:', error);
+      console.error('Failed to save/unsave job:', error);
     }
   };
 
-  const checkApplicationStatus = async (jobId: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const response = await fetch(`/api/job/${jobId}/applications/my`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setHasApplied(data.length > 0);
-        }
-      }
-    } catch (error) {
-      console.error('Error checking application status:', error);
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: job?.title,
+        text: job?.description,
+        url: window.location.href
+      });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      alert('Länk kopierad till urklipp!');
     }
+  };
+
+  const handleContactOwner = () => {
+    // Navigate to messages or open contact modal
+    navigate(`/messages?user=${owner?.id}`);
   };
 
   const handleApplicationSuccess = () => {
     setShowApplicationForm(false);
-    setHasApplied(true);
+    setIsApplied(true);
     // Reload job to update application count
-    loadJob();
-    loadBooking();
+    loadJobDetails();
   };
 
-  const handlePaymentSuccess = () => {
-    // Reload booking to update payment status
-    loadBooking();
-  };
-
-  const checkReviewStatus = async () => {
-    if (!booking || !user) return;
-    
+  const handleReviewSubmit = async (reviewData: any) => {
     try {
-      const status = await reviewsApi.canUserReview(booking.id);
-      setCanReview(status.canReview);
-      setHasReviewed(status.hasReviewed);
-    } catch (error) {
-      console.error('Error checking review status:', error);
-    }
-  };
-
-  const handleReviewSubmit = async (review: { rating: number; comment: string }) => {
-    if (!booking || !user) return;
-    
-    try {
-      setReviewLoading(true);
-      
-      const revieweeId = user.id === booking.customerId ? booking.youthId : booking.customerId;
-      
       await reviewsApi.createReview({
-        bookingId: booking.id,
-        revieweeId: revieweeId,
-        rating: review.rating,
-        comment: review.comment
+        ...reviewData,
+        jobId: id!
       });
-      
       setShowReviewForm(false);
-      setHasReviewed(true);
-      setCanReview(false);
+      loadReviews();
     } catch (error) {
-      console.error('Error submitting review:', error);
-    } finally {
-      setReviewLoading(false);
+      console.error('Failed to submit review:', error);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open': return 'status-open';
-      case 'in_progress': return 'status-progress';
-      case 'completed': return 'status-completed';
-      case 'cancelled': return 'status-cancelled';
-      default: return 'status-default';
-    }
-  };
-
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case 'high': return 'urgency-high';
-      case 'medium': return 'urgency-medium';
-      case 'low': return 'urgency-low';
-      default: return 'urgency-default';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('sv-SE', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p>Laddar jobb...</p>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Laddar jobbdetaljer..." />
       </div>
     );
   }
 
-  if (!job) {
+  if (error || !job) {
     return (
-      <div className="error-container">
-        <h2>Jobb hittades inte</h2>
-        <p>Det jobb du letar efter finns inte eller har tagits bort.</p>
-        <button onClick={() => navigate('/jobs')} className="btn btn-primary">
-          Tillbaka till jobb
-        </button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Jobb hittades inte</h1>
+          <p className="text-gray-600 mb-6">{error || 'Detta jobb existerar inte eller har tagits bort.'}</p>
+          <button
+            onClick={() => navigate('/jobs')}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Tillbaka till jobb
+          </button>
+        </div>
       </div>
     );
   }
 
-  if (showApplicationForm) {
-    return (
-      <JobApplicationForm
-        jobId={job.id}
-        jobTitle={job.title}
-        jobPrice={job.price}
-        jobPriceType={job.priceType}
-        onSuccess={handleApplicationSuccess}
-        onCancel={() => setShowApplicationForm(false)}
-      />
-    );
-  }
-
-  const canApply = user?.role === 'youth' && job.status === 'open' && !hasApplied;
-  const isOwner = user?.id === job.creator.id;
-  const canPay = booking && booking.status === 'confirmed' && user?.id === booking.customerId && booking.paymentStatus !== 'paid';
-  const showReviews = job.status === 'completed' || booking?.status === 'completed';
+  const isOwner = owner?.id === job.postedByUserId;
 
   return (
-    <div className="job-details">
-      <div className="job-header">
-        <div className="job-title-section">
-          <h1>{job.title}</h1>
-          <div className="job-meta">
-            <span className={`status-badge ${getStatusColor(job.status)}`}>
-              {job.status}
-            </span>
-            <span className={`urgency-badge ${getUrgencyColor(job.urgency)}`}>
-              {job.urgency} prioritet
-            </span>
-            <span className="category-badge">{job.category}</span>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main content */}
+          <div className="lg:col-span-2 space-y-6">
+            <JobHeader
+              job={job}
+              onApply={handleApply}
+              onSave={handleSave}
+              onShare={handleShare}
+              isApplied={isApplied}
+              isSaved={isSaved}
+              isOwner={isOwner}
+            />
 
-        <div className="job-actions">
-          {isOwner ? (
-            <div className="owner-actions">
-              <button
-                onClick={() => navigate(`/jobs/${job.id}/edit`)}
-                className="btn btn-secondary"
-              >
-                Redigera
-              </button>
-              <button
-                onClick={() => navigate('/dashboard/jobs')}
-                className="btn btn-primary"
-              >
-                Hantera jobb
-              </button>
-            </div>
-          ) : canApply ? (
-            <button
-              onClick={() => setShowApplicationForm(true)}
-              className="btn btn-primary btn-large"
-            >
-              Ansök om jobbet
-            </button>
-          ) : hasApplied ? (
-            <div className="applied-status">
-              <span className="applied-badge">Du har ansökt</span>
-            </div>
-          ) : (
-            <div className="cannot-apply">
-              <p>Du kan inte ansöka om detta jobb</p>
-            </div>
-          )}
-        </div>
-      </div>
+            <JobDescription job={job} />
 
-      <div className="job-content">
-        <div className="job-main">
-          <div className="job-description">
-            <h2>Beskrivning</h2>
-            <p>{job.description}</p>
-          </div>
+            <JobDetailsInfo job={job} />
 
-          {job.requiredSkills && (
-            <div className="job-requirements">
-              <h3>Erforderliga färdigheter</h3>
-              <p>{job.requiredSkills}</p>
-            </div>
-          )}
-
-          {job.specialInstructions && (
-            <div className="job-instructions">
-              <h3>Särskilda instruktioner</h3>
-              <p>{job.specialInstructions}</p>
-            </div>
-          )}
-
-          <div className="job-creator">
-            <h3>Uppdragsgivare</h3>
-            <div className="creator-info">
-              <span className="creator-name">{job.creator.displayName}</span>
-              {job.creator.city && (
-                <span className="creator-location">{job.creator.city}</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="job-sidebar">
-          <div className="job-info-card">
-            <h3>Jobbinformation</h3>
-            
-            <div className="info-item">
-              <label>Pris:</label>
-              <span className="price">
-                {job.price} SEK {job.priceType === 'hourly' ? 'per timme' : 'fast pris'}
-              </span>
-            </div>
-
-            {job.estimatedHours && (
-              <div className="info-item">
-                <label>Uppskattad tid:</label>
-                <span>{job.estimatedHours} timmar</span>
-              </div>
-            )}
-
-            {job.address && (
-              <div className="info-item">
-                <label>Plats:</label>
-                <span>{job.address}</span>
-              </div>
-            )}
-
-            {job.startsAt && (
-              <div className="info-item">
-                <label>Startdatum:</label>
-                <span>{formatDate(job.startsAt)}</span>
-              </div>
-            )}
-
-            {job.endsAt && (
-              <div className="info-item">
-                <label>Slutdatum:</label>
-                <span>{formatDate(job.endsAt)}</span>
-              </div>
-            )}
-
-            {(job.minAge || job.maxAge) && (
-              <div className="info-item">
-                <label>Ålderskrav:</label>
-                <span>
-                  {job.minAge && job.maxAge 
-                    ? `${job.minAge}-${job.maxAge} år`
-                    : job.minAge 
-                    ? `Minst ${job.minAge} år`
-                    : `Högst ${job.maxAge} år`
-                  }
-                </span>
-              </div>
-            )}
-
-            {job.requiresBackgroundCheck && (
-              <div className="info-item">
-                <label>Bakgrundskontroll:</label>
-                <span className="required">Krävs</span>
-              </div>
-            )}
-
-            <div className="info-item">
-              <label>Publicerad:</label>
-              <span>{formatDate(job.createdAt)}</span>
-            </div>
-          </div>
-
-          <div className="job-stats">
-            <h3>Statistik</h3>
-            <div className="stats-grid">
-              <div className="stat-item">
-                <span className="stat-number">{job.viewCount}</span>
-                <span className="stat-label">Visningar</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-number">{job.applicationCount}</span>
-                <span className="stat-label">Ansökningar</span>
-              </div>
-            </div>
-          </div>
-
-          {canApply && (
-            <div className="apply-card">
-              <h3>Intresserad?</h3>
-              <p>Skicka en ansökan och berätta varför du är rätt person för detta jobb.</p>
-              <button
-                onClick={() => setShowApplicationForm(true)}
-                className="btn btn-primary btn-full"
-              >
-                Ansök nu
-              </button>
-            </div>
-          )}
-
-          {canPay && (
-            <div className="payment-card">
-              <h3>Betalning</h3>
-              <p>Din bokning är bekräftad. Betala nu för att slutföra processen.</p>
-              <PaymentButton
-                bookingId={booking.id}
-                amount={booking.totalAmount || job.price}
-                onPaymentSuccess={handlePaymentSuccess}
-                className="btn-full"
+            {owner && (
+              <JobOwner
+                owner={owner}
+                onContact={handleContactOwner}
               />
-            </div>
-          )}
+            )}
 
-          {booking && booking.paymentStatus === 'paid' && (
-            <div className="payment-status-card">
-              <h3>Betalning slutförd</h3>
-              <p>✓ Betalningen är genomförd och bokningen är bekräftad.</p>
-            </div>
-          )}
+            {showApplicationForm && (
+              <JobApplicationForm
+                jobId={id!}
+                onSuccess={handleApplicationSuccess}
+                onCancel={() => setShowApplicationForm(false)}
+              />
+            )}
 
-          {canReview && (
-            <div className="review-card">
-              <h3>Skriv en recension</h3>
-              <p>Dela din upplevelse av detta jobb.</p>
-              <button
-                onClick={() => setShowReviewForm(true)}
-                className="btn btn-primary btn-full"
-              >
-                Skriv recension
-              </button>
-            </div>
-          )}
-
-          {hasReviewed && (
-            <div className="review-status-card">
-              <h3>Recension skickad</h3>
-              <p>✓ Tack för din recension!</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {showReviewForm && booking && user && (
-        <div className="review-form-modal">
-          <div className="modal-overlay">
-            <div className="modal">
-              <div className="modal-header">
-                <h3>Skriv en recension</h3>
-                <button 
-                  onClick={() => setShowReviewForm(false)}
-                  className="modal-close"
-                >
-                  ×
-                </button>
+            {/* Reviews Section */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Recensioner ({reviews.length})
+                </h2>
+                {!isOwner && (
+                  <button
+                    onClick={() => setShowReviewForm(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Skriv recension
+                  </button>
+                )}
               </div>
-              <div className="modal-body">
-                <ReviewForm
-                  bookingId={booking.id}
-                  revieweeId={user.id === booking.customerId ? booking.youthId : booking.customerId}
-                  revieweeName={user.id === booking.customerId ? booking.youthName : booking.customerName}
-                  jobTitle={job.title}
-                  onSubmit={handleReviewSubmit}
-                  onCancel={() => setShowReviewForm(false)}
-                  isLoading={reviewLoading}
-                />
+
+              {showReviewForm && (
+                <div className="mb-6">
+                  <ReviewForm
+                    bookingId=""
+                    revieweeId={job.postedByUserId}
+                    onSubmit={handleReviewSubmit}
+                    onCancel={() => setShowReviewForm(false)}
+                  />
+                </div>
+              )}
+
+              <ReviewList userId={job.postedByUserId} />
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Payment Section */}
+            {isOwner && job.status === 'active' && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Betalning</h3>
+                <PaymentButton bookingId={job.id} amount={job.budget} />
               </div>
+            )}
+
+            {/* Similar Jobs */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Liknande jobb</h3>
+              <p className="text-gray-500 text-sm">Funktion kommer snart...</p>
             </div>
           </div>
         </div>
-      )}
-
-      {showReviews && (
-        <div className="job-reviews-section">
-          <h2>Recensioner</h2>
-          <ReviewList
-            userId={job.creator.id}
-            showSummary={true}
-            showFilters={true}
-            maxReviews={5}
-          />
-        </div>
-      )}
+      </div>
     </div>
   );
 };

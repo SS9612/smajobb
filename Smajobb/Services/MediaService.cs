@@ -80,7 +80,7 @@ public class MediaService : IMediaService
                 Url = $"/uploads/{uniqueFileName}",
                 EntityType = mediaDto.EntityType,
                 EntityId = mediaDto.EntityId,
-                UploadedBy = userId,
+                UploadedBy = Guid.Parse(userId),
                 AltText = mediaDto.AltText,
                 Description = mediaDto.Description,
                 IsPublic = mediaDto.IsPublic,
@@ -183,7 +183,7 @@ public class MediaService : IMediaService
         if (media == null)
             throw new ArgumentException("Media not found");
             
-        if (media.UploadedBy != userId)
+        if (media.UploadedBy != Guid.Parse(userId))
             throw new UnauthorizedAccessException("Not authorized to update this media");
 
         if (updateDto.AltText != null)
@@ -210,7 +210,7 @@ public class MediaService : IMediaService
         if (media == null)
             return false;
             
-        if (media.UploadedBy != userId)
+        if (media.UploadedBy != Guid.Parse(userId))
             return false;
 
         // Delete physical file
@@ -238,7 +238,7 @@ public class MediaService : IMediaService
     public async Task<bool> DeleteMediaByEntityAsync(string entityType, string entityId, string userId)
     {
         var media = await _db.Media
-            .Where(m => m.EntityType == entityType && m.EntityId == entityId && m.UploadedBy == userId)
+            .Where(m => m.EntityType == entityType && m.EntityId == entityId && m.UploadedBy == Guid.Parse(userId))
             .ToListAsync();
             
         if (!media.Any())
@@ -439,7 +439,7 @@ public class MediaService : IMediaService
         Description = media.Description,
         EntityType = media.EntityType,
         EntityId = media.EntityId,
-        UploadedBy = media.UploadedBy,
+        UploadedBy = media.UploadedBy.ToString(),
         CreatedAt = media.CreatedAt,
         UpdatedAt = media.UpdatedAt,
         IsPublic = media.IsPublic,

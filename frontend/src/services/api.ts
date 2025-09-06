@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import type { UserProfile } from './userApi';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5106/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:7000/api';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -41,6 +42,15 @@ api.interceptors.response.use(
   }
 );
 
+// Create a separate axios instance for public endpoints (no auth required)
+const publicApi: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 // Common API functions
 export const apiService = {
   get: <T>(url: string, config = {}) => api.get<T>(url, config),
@@ -49,5 +59,20 @@ export const apiService = {
   delete: <T>(url: string, config = {}) => api.delete<T>(url, config),
   patch: <T>(url: string, data = {}, config = {}) => api.patch<T>(url, data, config),
 };
+
+// Public API functions (no authentication required)
+export const publicApiService = {
+  get: <T>(url: string, config = {}) => publicApi.get<T>(url, config),
+  post: <T>(url: string, data = {}, config = {}) => publicApi.post<T>(url, data, config),
+};
+
+// Re-export types and services from other API modules
+export type { Job, CreateJobRequest, JobApplication, JobFilter, JobSearchResponse } from './jobsApi';
+export type { UserProfile, UpdateProfileRequest, UserPreferences, UserStats, UserNotification } from './userApi';
+export { jobsApi, jobsApi as jobApi } from './jobsApi';
+export { userApi } from './userApi';
+
+// Legacy type export
+export type User = UserProfile;
 
 export default api;

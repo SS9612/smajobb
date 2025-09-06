@@ -48,8 +48,7 @@ public class Media
     public string EntityId { get; set; } = string.Empty;
     
     [Required]
-    [MaxLength(50)]
-    public string UploadedBy { get; set; } = string.Empty;
+    public Guid UploadedBy { get; set; }
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -1,117 +1,67 @@
-import React, { useState, useEffect } from 'react';
-
-interface UserProfile {
-  id: string;
-  displayName: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  city?: string;
-  bio?: string;
-  profileImageUrl?: string;
-  userType: 'customer' | 'youth';
-  birthDate?: string;
-  address?: string;
-  postalCode?: string;
-  skills?: string[];
-  availability?: {
-    monday: boolean;
-    tuesday: boolean;
-    wednesday: boolean;
-    thursday: boolean;
-    friday: boolean;
-    saturday: boolean;
-    sunday: boolean;
-  };
-  preferences?: {
-    notifications: boolean;
-    emailUpdates: boolean;
-    smsUpdates: boolean;
-    publicProfile: boolean;
-  };
-}
+import React, { useState } from 'react';
+import { User } from '../services/api';
+import { userApi } from '../services/userApi';
+import LoadingSpinner from './LoadingSpinner';
+import PersonalInfoForm from './forms/PersonalInfoForm';
+import SkillsForm from './forms/SkillsForm';
+import ProfileImageForm from './forms/ProfileImageForm';
 
 interface ProfileEditFormProps {
-  user: UserProfile;
-  onSave: (updatedProfile: UserProfile) => void;
+  user: User;
+  onSuccess: () => void;
   onCancel: () => void;
-  loading?: boolean;
 }
 
 const ProfileEditForm: React.FC<ProfileEditFormProps> = ({
   user,
-  onSave,
-  onCancel,
-  loading = false
+  onSuccess,
+  onCancel
 }) => {
-  const [formData, setFormData] = useState<UserProfile>(user);
+  const [formData, setFormData] = useState({
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    email: user.email || '',
+    phone: user.phone || '',
+    bio: user.bio || '',
+    location: user.location || '',
+    birthDate: user.birthDate || '',
+    skills: [] as string[], // Skills not available in UserProfile type
+    profileImage: null as File | null
+  });
+
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState('personal');
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    setFormData(user);
-  }, [user]);
-
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      if (name.startsWith('availability.')) {
-        const day = name.split('.')[1];
-        setFormData(prev => ({
-          ...prev,
-          availability: {
-            ...prev.availability,
-            [day]: checked
-          }
-        }));
-      } else if (name.startsWith('preferences.')) {
-        const pref = name.split('.')[1];
-        setFormData(prev => ({
-          ...prev,
-          preferences: {
-            ...prev.preferences,
-            [pref]: checked
-          }
-        }));
-      }
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
-
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleSkillAdd = (skill: string) => {
-    if (skill.trim() && !formData.skills?.includes(skill.trim())) {
+    if (skill && !formData.skills.includes(skill)) {
       setFormData(prev => ({
         ...prev,
-        skills: [...(prev.skills || []), skill.trim()]
+        skills: [...prev.skills, skill]
       }));
     }
   };
 
-  const handleSkillRemove = (skillToRemove: string) => {
+  const handleSkillRemove = (skill: string) => {
     setFormData(prev => ({
       ...prev,
-      skills: prev.skills?.filter(skill => skill !== skillToRemove) || []
+      skills: prev.skills.filter((s: string) => s !== skill)
     }));
   };
 
-  const validateForm = (): boolean => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormData(prev => ({ ...prev, profileImage: file }));
+    }
+  };
+
+  const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.firstName.trim()) {
@@ -125,359 +75,105 @@ const ProfileEditForm: React.FC<ProfileEditFormProps> = ({
     if (!formData.email.trim()) {
       newErrors.email = 'E-postadress är obligatorisk';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Ogiltig e-postadress';
+      newErrors.email = 'E-postadress är inte giltig';
     }
 
-    if (formData.phone && !/^\+?[\d\s-()]+$/.test(formData.phone)) {
-      newErrors.phone = 'Ogiltigt telefonnummer';
-    }
-
-    if (formData.userType === 'youth' && formData.birthDate) {
-      const birthDate = new Date(formData.birthDate);
-      const today = new Date();
-      const age = today.getFullYear() - birthDate.getFullYear();
-      
-      if (age < 13 || age > 25) {
-        newErrors.birthDate = 'Du måste vara mellan 13 och 25 år';
-      }
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Telefonnummer är obligatoriskt';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (validateForm()) {
-      onSave(formData);
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // Only update fields that are supported by the UserProfile type
+      const updateData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        bio: formData.bio,
+        location: formData.location,
+        birthDate: formData.birthDate
+      };
+      await userApi.updateUser(user.id, updateData);
+      onSuccess();
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      setErrors({ general: 'Kunde inte uppdatera profilen. Försök igen.' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const tabs = [
-    { id: 'personal', name: 'Personlig information', icon: '👤' },
-    { id: 'contact', name: 'Kontaktuppgifter', icon: '📞' },
-    { id: 'skills', name: 'Färdigheter', icon: '🎯' },
-    { id: 'availability', name: 'Tillgänglighet', icon: '📅' },
-    { id: 'preferences', name: 'Inställningar', icon: '⚙️' }
-  ];
-
   return (
-    <div className="profile-edit-form">
-      <div className="form-header">
-        <h1>Redigera profil</h1>
-        <p>Uppdatera din profilinformation</p>
-      </div>
-
-      <div className="form-tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`form-tab ${activeTab === tab.id ? 'active' : ''}`}
-          >
-            <span className="tab-icon">{tab.icon}</span>
-            <span className="tab-name">{tab.name}</span>
-          </button>
-        ))}
-      </div>
-
-      <form onSubmit={handleSubmit} className="form-content">
-        {activeTab === 'personal' && (
-          <div className="form-section">
-            <h2>Personlig information</h2>
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="firstName">Förnamn *</label>
-                <input
-                  type="text"
-                  id="firstName"
-                  name="firstName"
-                  value={formData.firstName}
-                  onChange={handleInputChange}
-                  className={errors.firstName ? 'error' : ''}
-                  placeholder="Ange ditt förnamn"
-                />
-                {errors.firstName && <span className="error-message">{errors.firstName}</span>}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="lastName">Efternamn *</label>
-                <input
-                  type="text"
-                  id="lastName"
-                  name="lastName"
-                  value={formData.lastName}
-                  onChange={handleInputChange}
-                  className={errors.lastName ? 'error' : ''}
-                  placeholder="Ange ditt efternamn"
-                />
-                {errors.lastName && <span className="error-message">{errors.lastName}</span>}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="bio">Om mig</label>
-              <textarea
-                id="bio"
-                name="bio"
-                value={formData.bio || ''}
-                onChange={handleInputChange}
-                rows={4}
-                placeholder="Berätta lite om dig själv..."
-              />
-            </div>
-
-            {formData.userType === 'youth' && (
-              <div className="form-group">
-                <label htmlFor="birthDate">Födelsedatum</label>
-                <input
-                  type="date"
-                  id="birthDate"
-                  name="birthDate"
-                  value={formData.birthDate || ''}
-                  onChange={handleInputChange}
-                  className={errors.birthDate ? 'error' : ''}
-                />
-                {errors.birthDate && <span className="error-message">{errors.birthDate}</span>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'contact' && (
-          <div className="form-section">
-            <h2>Kontaktuppgifter</h2>
-            <div className="form-group">
-              <label htmlFor="email">E-postadress *</label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                className={errors.email ? 'error' : ''}
-                placeholder="din@email.com"
-              />
-              {errors.email && <span className="error-message">{errors.email}</span>}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="phone">Telefonnummer</label>
-              <input
-                type="tel"
-                id="phone"
-                name="phone"
-                value={formData.phone || ''}
-                onChange={handleInputChange}
-                className={errors.phone ? 'error' : ''}
-                placeholder="+46 70 123 45 67"
-              />
-              {errors.phone && <span className="error-message">{errors.phone}</span>}
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="city">Stad</label>
-                <input
-                  type="text"
-                  id="city"
-                  name="city"
-                  value={formData.city || ''}
-                  onChange={handleInputChange}
-                  placeholder="Stockholm"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="postalCode">Postnummer</label>
-                <input
-                  type="text"
-                  id="postalCode"
-                  name="postalCode"
-                  value={formData.postalCode || ''}
-                  onChange={handleInputChange}
-                  placeholder="123 45"
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="address">Adress</label>
-              <input
-                type="text"
-                id="address"
-                name="address"
-                value={formData.address || ''}
-                onChange={handleInputChange}
-                placeholder="Gatunamn 123"
-              />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'skills' && formData.userType === 'youth' && (
-          <div className="form-section">
-            <h2>Färdigheter</h2>
-            <div className="form-group">
-              <label>Lägg till färdigheter</label>
-              <div className="skill-input-group">
-                <input
-                  type="text"
-                  placeholder="T.ex. Städning, Trädgårdsarbete, IT-hjälp..."
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSkillAdd((e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    const input = (e.target as HTMLButtonElement).previousElementSibling as HTMLInputElement;
-                    handleSkillAdd(input.value);
-                    input.value = '';
-                  }}
-                  className="btn btn-secondary"
-                >
-                  Lägg till
-                </button>
-              </div>
-            </div>
-
-            {formData.skills && formData.skills.length > 0 && (
-              <div className="skills-list">
-                {formData.skills.map((skill, index) => (
-                  <div key={index} className="skill-tag">
-                    <span>{skill}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleSkillRemove(skill)}
-                      className="skill-remove"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'availability' && formData.userType === 'youth' && (
-          <div className="form-section">
-            <h2>Tillgänglighet</h2>
-            <p className="section-description">
-              Välj vilka dagar du vanligtvis är tillgänglig för jobb
-            </p>
-            <div className="availability-grid">
-              {Object.entries(formData.availability || {}).map(([day, available]) => (
-                <label key={day} className="availability-day">
-                  <input
-                    type="checkbox"
-                    name={`availability.${day}`}
-                    checked={available}
-                    onChange={handleInputChange}
-                    className="form-checkbox"
-                  />
-                  <span className="day-name">
-                    {day === 'monday' && 'Måndag'}
-                    {day === 'tuesday' && 'Tisdag'}
-                    {day === 'wednesday' && 'Onsdag'}
-                    {day === 'thursday' && 'Torsdag'}
-                    {day === 'friday' && 'Fredag'}
-                    {day === 'saturday' && 'Lördag'}
-                    {day === 'sunday' && 'Söndag'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'preferences' && (
-          <div className="form-section">
-            <h2>Inställningar</h2>
-            <div className="preferences-list">
-              <label className="preference-item">
-                <input
-                  type="checkbox"
-                  name="preferences.notifications"
-                  checked={formData.preferences?.notifications || false}
-                  onChange={handleInputChange}
-                  className="form-checkbox"
-                />
-                <div className="preference-content">
-                  <span className="preference-title">Push-notifikationer</span>
-                  <span className="preference-description">Få notifikationer direkt på din enhet</span>
-                </div>
-              </label>
-
-              <label className="preference-item">
-                <input
-                  type="checkbox"
-                  name="preferences.emailUpdates"
-                  checked={formData.preferences?.emailUpdates || false}
-                  onChange={handleInputChange}
-                  className="form-checkbox"
-                />
-                <div className="preference-content">
-                  <span className="preference-title">E-postuppdateringar</span>
-                  <span className="preference-description">Få viktiga uppdateringar via e-post</span>
-                </div>
-              </label>
-
-              <label className="preference-item">
-                <input
-                  type="checkbox"
-                  name="preferences.smsUpdates"
-                  checked={formData.preferences?.smsUpdates || false}
-                  onChange={handleInputChange}
-                  className="form-checkbox"
-                />
-                <div className="preference-content">
-                  <span className="preference-title">SMS-uppdateringar</span>
-                  <span className="preference-description">Få viktiga meddelanden via SMS</span>
-                </div>
-              </label>
-
-              <label className="preference-item">
-                <input
-                  type="checkbox"
-                  name="preferences.publicProfile"
-                  checked={formData.preferences?.publicProfile || false}
-                  onChange={handleInputChange}
-                  className="form-checkbox"
-                />
-                <div className="preference-content">
-                  <span className="preference-title">Offentlig profil</span>
-                  <span className="preference-description">Låt andra användare se din profil</span>
-                </div>
-              </label>
-            </div>
-          </div>
-        )}
-
-        <div className="form-actions">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn btn-secondary"
-            disabled={loading}
-          >
-            Avbryt
-          </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-          >
-            {loading ? 'Sparar...' : 'Spara ändringar'}
-          </button>
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Redigera profil</h1>
+          <p className="text-gray-600 mt-1">Uppdatera din personliga information</p>
         </div>
-      </form>
+
+        {errors.general && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {errors.general}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <PersonalInfoForm
+            user={user}
+            formData={formData}
+            errors={errors}
+            onInputChange={handleInputChange}
+          />
+
+          <SkillsForm
+            skills={formData.skills}
+            onSkillAdd={handleSkillAdd}
+            onSkillRemove={handleSkillRemove}
+          />
+
+          <ProfileImageForm
+            profileImage={formData.profileImage}
+            onImageChange={handleImageChange}
+            currentImageUrl={user.avatar}
+          />
+
+          <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-6 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Avbryt
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <LoadingSpinner size="sm" />
+                  <span className="ml-2">Sparar...</span>
+                </div>
+              ) : (
+                'Spara ändringar'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

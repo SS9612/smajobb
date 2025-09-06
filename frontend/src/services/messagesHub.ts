@@ -1,6 +1,6 @@
 import * as signalR from '@microsoft/signalr';
 
-const HUB_BASE_URL = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:5106/api').replace(/\/api$/, '');
+const HUB_BASE_URL = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:7000/api').replace(/\/api$/, '');
 
 let connection: signalR.HubConnection | null = null;
 

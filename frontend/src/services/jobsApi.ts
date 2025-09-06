@@ -7,17 +7,25 @@ export interface Job {
   description: string;
   category: string;
   location: string;
-  price: number;
+  budget: number;
   priceType: 'fixed' | 'hourly';
   postedBy: string;
   postedByUserId: string;
+  createdAt: string;
   postedDate: string;
+  applicationCount: number;
   applications: number;
   urgent: boolean;
-  status: 'open' | 'in-progress' | 'completed' | 'cancelled';
-  requirements?: string[];
+  urgency: 'low' | 'medium' | 'high';
+  status: 'active' | 'open' | 'in-progress' | 'completed' | 'cancelled';
+  estimatedHours: number;
   estimatedDuration?: string;
   images?: string[];
+  viewCount?: number;
+  requirements?: string[];
+  benefits?: string[];
+  tags?: string[];
+  deadline?: string;
 }
 
 export interface CreateJobRequest {
@@ -25,11 +33,12 @@ export interface CreateJobRequest {
   description: string;
   category: string;
   location: string;
-  price: number;
+  budget: number;
   priceType: 'fixed' | 'hourly';
-  urgent?: boolean;
+  urgency: 'low' | 'medium' | 'high';
+  estimatedHours: number;
   requirements?: string[];
-  estimatedDuration?: string;
+  deadline?: string;
 }
 
 export interface JobApplication {
@@ -49,8 +58,10 @@ export interface JobFilter {
   priceMin?: number;
   priceMax?: number;
   priceType?: 'fixed' | 'hourly';
+  urgency?: 'low' | 'medium' | 'high';
   urgent?: boolean;
   search?: string;
+  query?: string;
 }
 
 export interface JobSearchResponse {
@@ -64,7 +75,7 @@ export interface JobSearchResponse {
 // Jobs API service
 export const jobsApi = {
   // Get all jobs with optional filtering
-  getJobs: async (filters: JobFilter = {}, page = 1, pageSize = 10): Promise<JobSearchResponse> => {
+  getJobs: async (filters: JobFilter = {}, page = 1, pageSize = 10): Promise<Job[]> => {
     const params = new URLSearchParams();
     
     // Add filters to query params
@@ -77,7 +88,7 @@ export const jobsApi = {
     params.append('page', page.toString());
     params.append('pageSize', pageSize.toString());
     
-    const response = await apiService.get<JobSearchResponse>(`/jobs?${params.toString()}`);
+    const response = await apiService.get<Job[]>(`/jobs?${params.toString()}`);
     return response.data;
   },
 
@@ -131,8 +142,11 @@ export const jobsApi = {
   },
 
   // Get user's posted jobs
-  getUserJobs: async (): Promise<Job[]> => {
-    const response = await apiService.get<Job[]>('/jobs/my-jobs');
+  getUserJobs: async (userId?: string): Promise<Job[]> => {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+    const response = await apiService.get<Job[]>(`/jobs/user/${userId}`);
     return response.data;
   },
 
@@ -163,6 +177,12 @@ export const jobsApi = {
   // Get job categories
   getCategories: async (): Promise<{ id: string; name: string; icon: string }[]> => {
     const response = await apiService.get<{ id: string; name: string; icon: string }[]>('/jobs/categories');
+    return response.data;
+  },
+
+  // Update job status
+  updateJobStatus: async (jobId: string, status: string): Promise<Job> => {
+    const response = await apiService.patch<Job>(`/jobs/${jobId}/status`, { status });
     return response.data;
   },
 };

@@ -41,6 +41,11 @@ public class SmajobbDbContext : DbContext
     // Media entities
     public DbSet<Media> Media { get; set; }
     
+    // Analytics and monitoring entities
+    public DbSet<AnalyticsEvent> AnalyticsEvents { get; set; }
+    public DbSet<SystemMetric> SystemMetrics { get; set; }
+    public DbSet<ErrorLog> ErrorLogs { get; set; }
+    
     // Skill and preference entities
     public DbSet<Skill> Skills { get; set; }
     public DbSet<UserSkill> UserSkills { get; set; }
@@ -121,6 +126,7 @@ public class SmajobbDbContext : DbContext
             entity.Property(e => e.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
+            
         });
 
         // Configure JobApplication entity
@@ -391,5 +397,54 @@ public class SmajobbDbContext : DbContext
         
         modelBuilder.Entity<Media>()
             .HasIndex(m => m.CreatedAt);
+
+        // Configure AnalyticsEvent entity
+        modelBuilder.Entity<AnalyticsEvent>(entity =>
+        {
+            entity.HasOne(d => d.User)
+                .WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure SystemMetric entity
+        modelBuilder.Entity<SystemMetric>(entity =>
+        {
+            // No foreign keys for system metrics
+        });
+
+        // Configure ErrorLog entity
+        modelBuilder.Entity<ErrorLog>(entity =>
+        {
+            entity.HasOne(d => d.User)
+                .WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure indexes for analytics entities
+        modelBuilder.Entity<AnalyticsEvent>()
+            .HasIndex(a => new { a.UserId, a.CreatedAt });
+        
+        modelBuilder.Entity<AnalyticsEvent>()
+            .HasIndex(a => a.EventType);
+        
+        modelBuilder.Entity<AnalyticsEvent>()
+            .HasIndex(a => a.CreatedAt);
+        
+        modelBuilder.Entity<SystemMetric>()
+            .HasIndex(s => new { s.MetricName, s.Timestamp });
+        
+        modelBuilder.Entity<SystemMetric>()
+            .HasIndex(s => s.Source);
+        
+        modelBuilder.Entity<ErrorLog>()
+            .HasIndex(e => new { e.ErrorType, e.CreatedAt });
+        
+        modelBuilder.Entity<ErrorLog>()
+            .HasIndex(e => new { e.IsResolved, e.CreatedAt });
+        
+        modelBuilder.Entity<ErrorLog>()
+            .HasIndex(e => e.Severity);
     }
 }
